@@ -1,0 +1,261 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'suryakumar.garikini@gmail.com'
+      );
+    }
+
+    function isDoctor() {
+      return isVerified()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor';
+    }
+
+    function isValidUserAccount(data) {
+      return data.keys().hasAll(['uid', 'role', 'displayName', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'role', 'displayName', 'createdAt'])
+        && isValidId(data.uid)
+        && data.role in ['doctor', 'patient']
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.createdAt is timestamp;
+    }
+
+    function isValidMigrantPatient(data) {
+      return data.keys().hasAll([
+          'healthId', 'fullName', 'age', 'gender', 'originState',
+          'currentState', 'primaryLanguage', 'bloodGroup',
+          'continuityRiskScore', 'continuityRiskTier', 'recordLinkageStatus',
+          'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'healthId', 'fullName', 'age', 'gender', 'originState',
+          'currentState', 'primaryLanguage', 'bloodGroup',
+          'continuityRiskScore', 'continuityRiskTier', 'recordLinkageStatus',
+          'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.healthId)
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.age is int && data.age >= 0 && data.age <= 120
+        && data.gender in ['Female', 'Male', 'Other']
+        && data.originState is string && data.originState.size() >= 2 && data.originState.size() <= 64
+        && data.currentState is string && data.currentState.size() >= 2 && data.currentState.size() <= 64
+        && data.primaryLanguage is string && data.primaryLanguage.size() >= 2 && data.primaryLanguage.size() <= 40
+        && data.bloodGroup is string && data.bloodGroup.size() >= 1 && data.bloodGroup.size() <= 8
+        && data.continuityRiskScore is int && data.continuityRiskScore >= 0 && data.continuityRiskScore <= 100
+        && data.continuityRiskTier in ['LOW', 'MODERATE', 'HIGH']
+        && data.recordLinkageStatus in ['LINKED', 'PENDING_REVIEW', 'UNLINKED']
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEncounter(data) {
+      return data.keys().hasAll([
+          'encounterId', 'patientHealthId', 'facilityName', 'state',
+          'diagnosis', 'ownerUid', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'encounterId', 'patientHealthId', 'facilityName', 'state',
+          'diagnosis', 'ownerUid', 'createdAt'
+        ])
+        && isValidId(data.encounterId)
+        && isValidId(data.patientHealthId)
+        && data.facilityName is string && data.facilityName.size() >= 2 && data.facilityName.size() <= 160
+        && data.state is string && data.state.size() >= 2 && data.state.size() <= 64
+        && data.diagnosis is string && data.diagnosis.size() >= 2 && data.diagnosis.size() <= 240
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidConsent(data) {
+      return data.keys().hasAll([
+          'healthId', 'ownerUid', 'interStateSharing',
+          'emergencyQrAccess', 'anonymizedSurveillance', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'healthId', 'ownerUid', 'interStateSharing',
+          'emergencyQrAccess', 'anonymizedSurveillance', 'updatedAt'
+        ])
+        && isValidId(data.healthId)
+        && isValidId(data.ownerUid)
+        && data.interStateSharing is bool
+        && data.emergencyQrAccess is bool
+        && data.anonymizedSurveillance is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+          'logId', 'healthId', 'ownerUid', 'actorRole', 'action', 'purpose', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'logId', 'healthId', 'ownerUid', 'actorRole', 'action', 'purpose', 'createdAt'
+        ])
+        && isValidId(data.logId)
+        && isValidId(data.healthId)
+        && isValidId(data.ownerUid)
+        && data.actorRole in ['admin', 'doctor', 'patient']
+        && data.action is string && data.action.size() >= 2 && data.action.size() <= 120
+        && data.purpose is string && data.purpose.size() >= 2 && data.purpose.size() <= 240
+        && data.createdAt is timestamp;
+    }
+
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && request.auth.uid == adminId;
+      allow list, write: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && ((isSignedIn() && request.auth.uid == userId) || isAdmin());
+      allow list: if isAdmin();
+      // Self-registration is strictly locked to 'patient'; only verified admins may provision 'doctor' accounts.
+      allow create: if isValidId(userId) && isVerified()
+        && isValidUserAccount(incoming())
+        && incoming().uid == userId
+        && incoming().createdAt == request.time
+        && (
+          (request.auth.uid == userId && incoming().role == 'patient') ||
+          isAdmin()
+        );
+      // Users can update only their own displayName and CANNOT elevate their role. Admins can update roles.
+      allow update: if isValidId(userId) && isVerified()
+        && isValidUserAccount(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && (
+          (
+            request.auth.uid == userId
+            && incoming().role == existing().role
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName'])
+          ) || (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role'])
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /patients/{patientId} {
+      allow get: if isValidId(patientId) && (
+        isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid)
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow create: if isValidId(patientId) && isVerified()
+        && isValidMigrantPatient(incoming())
+        && incoming().healthId == patientId
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(patientId) && isVerified()
+        && isValidMigrantPatient(incoming())
+        && (isAdmin() || existing().ownerUid == request.auth.uid)
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().healthId == existing().healthId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'currentState', 'continuityRiskScore', 'continuityRiskTier',
+          'recordLinkageStatus', 'updatedAt'
+        ]);
+      allow delete: if isAdmin();
+
+      match /encounters/{encounterId} {
+        allow get: if isValidId(patientId) && isValidId(encounterId) && (
+          isAdmin() || (
+            isSignedIn()
+            && exists(/databases/$(database)/documents/patients/$(patientId))
+            && get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == request.auth.uid
+          )
+        );
+        allow list: if isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+        allow create: if isValidId(patientId) && isValidId(encounterId) && isVerified()
+          && (isAdmin() || isDoctor())
+          && isValidEncounter(incoming())
+          && incoming().encounterId == encounterId
+          && incoming().ownerUid == request.auth.uid
+          && incoming().patientHealthId == patientId
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/patients/$(patientId));
+        allow update, delete: if false;
+      }
+    }
+
+    match /consents/{healthId} {
+      allow get: if isValidId(healthId) && (
+        isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid)
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow create: if isValidId(healthId) && isVerified()
+        && isValidConsent(incoming())
+        && incoming().ownerUid == request.auth.uid
+        && incoming().healthId == healthId
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(healthId) && isVerified()
+        && isValidConsent(incoming())
+        && (isAdmin() || existing().ownerUid == request.auth.uid)
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().healthId == existing().healthId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'interStateSharing', 'emergencyQrAccess', 'anonymizedSurveillance', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow get: if isValidId(logId) && (
+        isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid)
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow create: if isValidId(logId) && isVerified()
+        && isValidAuditLog(incoming())
+        && incoming().logId == logId
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    match /qrRevocations/{passId} {
+      allow read, write: if false;
+    }
+
+    match /qrReplayNonces/{passId} {
+      allow read, write: if false;
+    }
+
+    match /rateLimits/{bucketKey} {
+      allow read, write: if false;
+    }
+
+    match /test/connection {
+      allow get: if true;
+    }
+  }
+}

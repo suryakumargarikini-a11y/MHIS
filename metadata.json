@@ -1,0 +1,6 @@
+{
+  "name": "Migrant Health Intelligence System (SIH25083)",
+  "description": "Portable interstate migrant health record infrastructure with deterministic entity resolution, continuity-risk triage, QR health passes, consent governance, and Gemini-assisted clinical RAG.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

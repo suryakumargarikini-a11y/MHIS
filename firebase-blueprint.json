@@ -1,0 +1,153 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Authenticated clinician, administrator, or patient account metadata without PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "role": { "type": "string", "enum": ["admin", "doctor", "patient"] },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "role", "displayName", "createdAt"]
+    },
+    "MigrantPatient": {
+      "title": "MigrantPatient",
+      "description": "Unified portable migrant worker health profile.",
+      "type": "object",
+      "properties": {
+        "healthId": { "type": "string", "minLength": 4, "maxLength": 40, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "age": { "type": "integer" },
+        "gender": { "type": "string", "enum": ["Female", "Male", "Other"] },
+        "originState": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "currentState": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "primaryLanguage": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "bloodGroup": { "type": "string", "minLength": 1, "maxLength": 8 },
+        "continuityRiskScore": { "type": "integer" },
+        "continuityRiskTier": { "type": "string", "enum": ["LOW", "MODERATE", "HIGH"] },
+        "recordLinkageStatus": { "type": "string", "enum": ["LINKED", "PENDING_REVIEW", "UNLINKED"] },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["healthId", "fullName", "age", "originState", "currentState", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "MedicalEncounter": {
+      "title": "MedicalEncounter",
+      "description": "Cross-state clinical encounter linked to a migrant patient.",
+      "type": "object",
+      "properties": {
+        "encounterId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientHealthId": { "type": "string", "minLength": 4, "maxLength": 40, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "facilityName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "diagnosis": { "type": "string", "minLength": 2, "maxLength": 240 },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["encounterId", "patientHealthId", "facilityName", "state", "diagnosis", "ownerUid", "createdAt"]
+    },
+    "ConsentPreference": {
+      "title": "ConsentPreference",
+      "description": "Granular consent switches controlled by the patient or authorized steward.",
+      "type": "object",
+      "properties": {
+        "healthId": { "type": "string", "minLength": 4, "maxLength": 40, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "interStateSharing": { "type": "boolean" },
+        "emergencyQrAccess": { "type": "boolean" },
+        "anonymizedSurveillance": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["healthId", "ownerUid", "interStateSharing", "emergencyQrAccess", "anonymizedSurveillance", "updatedAt"]
+    },
+    "AccessAuditLog": {
+      "title": "AccessAuditLog",
+      "description": "Append-only record of health record access and consent changes.",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "healthId": { "type": "string", "minLength": 4, "maxLength": 40, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorRole": { "type": "string", "enum": ["admin", "doctor", "patient"] },
+        "action": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "purpose": { "type": "string", "minLength": 2, "maxLength": 240 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["logId", "healthId", "ownerUid", "actorRole", "action", "purpose", "createdAt"]
+    },
+    "QrRevocationRecord": {
+      "title": "QrRevocationRecord",
+      "description": "Server-only distributed QR revocation state with TTL expiry.",
+      "type": "object",
+      "properties": {
+        "passId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "healthId": { "type": "string", "minLength": 4, "maxLength": 40, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "revokedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "revokedAtMs": { "type": "integer" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["passId", "revokedByUid", "revokedAtMs", "expiresAt"]
+    },
+    "QrReplayNonce": {
+      "title": "QrReplayNonce",
+      "description": "Server-only distributed QR replay detection nonce with TTL expiry.",
+      "type": "object",
+      "properties": {
+        "passId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "healthId": { "type": "string", "minLength": 4, "maxLength": 40, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "count": { "type": "integer" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["passId", "healthId", "count", "expiresAt"]
+    },
+    "RateLimitBucket": {
+      "title": "RateLimitBucket",
+      "description": "Server-only distributed rate-limit counter with TTL expiry.",
+      "type": "object",
+      "properties": {
+        "bucketKey": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "windowStartMs": { "type": "integer" },
+        "count": { "type": "integer" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bucketKey", "windowStartMs", "count", "expiresAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "Authenticated user role profile (no PII)."
+    },
+    "/patients/{patientId}": {
+      "schema": { "$ref": "#/entities/MigrantPatient" },
+      "description": "Portable migrant worker health profiles."
+    },
+    "/patients/{patientId}/encounters/{encounterId}": {
+      "schema": { "$ref": "#/entities/MedicalEncounter" },
+      "description": "Longitudinal medical encounters belonging to a migrant patient."
+    },
+    "/consents/{healthId}": {
+      "schema": { "$ref": "#/entities/ConsentPreference" },
+      "description": "Patient consent controls for cross-state sharing and QR access."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AccessAuditLog" },
+      "description": "Append-only data access and consent history entries."
+    },
+    "/qrRevocations/{passId}": {
+      "schema": { "$ref": "#/entities/QrRevocationRecord" },
+      "description": "Server-only QR revocation registry managed exclusively via Firebase Admin SDK."
+    },
+    "/qrReplayNonces/{passId}": {
+      "schema": { "$ref": "#/entities/QrReplayNonce" },
+      "description": "Server-only QR replay tracking nonces managed exclusively via Firebase Admin SDK."
+    },
+    "/rateLimits/{bucketKey}": {
+      "schema": { "$ref": "#/entities/RateLimitBucket" },
+      "description": "Server-only distributed rate-limit buckets managed exclusively via Firebase Admin SDK."
+    }
+  }
+}
