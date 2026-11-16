@@ -469,21 +469,25 @@ export function evaluateBaseline128dHybrid(
  * Runs an independent side-by-side comparison using Gemini's genuine pretrained
  * embedding model (`gemini-embedding-2`) via `@google/genai` `ai.models.embedContent`.
  */
+export function getConfiguredEmbeddingModel(): string {
+  return process.env.GEMINI_EMBEDDING_MODEL?.trim() || 'gemini-embedding-2';
+}
+
 export async function runPretrainedEmbeddingComparison(
   geminiClient: GoogleGenAI | null,
   cases: EmbeddingEvalCase[] = buildSixCategoryBenchmarkCases(),
 ): Promise<PretrainedComparisonReport> {
   const baseline128dHybrid = evaluateBaseline128dHybrid(cases);
-
+  const embeddingModel = getConfiguredEmbeddingModel();
   if (!geminiClient) {
     return {
-      model: 'gemini-embedding-2',
+      model: embeddingModel,
       totalCases: cases.length,
       baseline128dHybrid,
       pretrainedDenseOnly: null,
       pretrainedHybridRrf: null,
       liveEmbeddingError:
-        'GEMINI_API_KEY not available in runtime environment; pretrained gemini-embedding-2 evaluation skipped without mocking.',
+        `GEMINI_API_KEY not available in runtime environment; pretrained ${embeddingModel} evaluation skipped without mocking.`,
     };
   }
 
@@ -504,7 +508,7 @@ export async function runPretrainedEmbeddingComparison(
 
     const tStart = performance.now();
     const res = await geminiClient.models.embedContent({
-      model: 'gemini-embedding-2',
+      model: embeddingModel,
       contents: rawInputs,
     });
     const embedLatencyMs = performance.now() - tStart;
@@ -611,8 +615,8 @@ export async function runPretrainedEmbeddingComparison(
 
       return {
         strategyName: hybridBlend
-          ? 'Pretrained Hybrid (gemini-embedding-2 + BM25 + Intent)'
-          : 'Pretrained Dense Only (gemini-embedding-2)',
+          ? `Pretrained Hybrid (${embeddingModel} + BM25 + Intent)`
+          : `Pretrained Dense Only (${embeddingModel})`,
         totalCases: cases.length,
         top1Accuracy: Number((hits / Math.max(1, cases.length)).toFixed(4)),
         mrr: Number((mrrSum / Math.max(1, cases.length)).toFixed(4)),
@@ -625,7 +629,7 @@ export async function runPretrainedEmbeddingComparison(
     };
 
     return {
-      model: 'gemini-embedding-2',
+      model: embeddingModel,
       totalCases: cases.length,
       baseline128dHybrid,
       pretrainedDenseOnly: evaluateDense(false),
@@ -634,7 +638,7 @@ export async function runPretrainedEmbeddingComparison(
     };
   } catch (err) {
     return {
-      model: 'gemini-embedding-2',
+      model: embeddingModel,
       totalCases: cases.length,
       baseline128dHybrid,
       pretrainedDenseOnly: null,

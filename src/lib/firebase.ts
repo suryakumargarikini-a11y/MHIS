@@ -4,13 +4,27 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
+const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+
 const resolvedFirebaseConfig = {
-  ...firebaseConfig,
-  measurementId: firebaseConfig.measurementId || 'G-4N2PTF337L',
+  apiKey: env.VITE_FIREBASE_API_KEY?.trim() || firebaseConfig.apiKey,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || firebaseConfig.authDomain,
+  projectId: env.VITE_FIREBASE_PROJECT_ID?.trim() || firebaseConfig.projectId,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || firebaseConfig.storageBucket,
+  messagingSenderId:
+    env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || firebaseConfig.messagingSenderId,
+  appId: env.VITE_FIREBASE_APP_ID?.trim() || firebaseConfig.appId,
+  measurementId:
+    env.VITE_FIREBASE_MEASUREMENT_ID?.trim() || firebaseConfig.measurementId || 'G-4N2PTF337L',
 };
 
+const resolvedFirestoreDatabaseId =
+  env.VITE_FIREBASE_FIRESTORE_DATABASE_ID?.trim() ||
+  firebaseConfig.firestoreDatabaseId ||
+  'ai-studio-85830e53-0349-481d-ae27-ffdfdecbe5c5';
+
 export const app = initializeApp(resolvedFirebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, resolvedFirestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });

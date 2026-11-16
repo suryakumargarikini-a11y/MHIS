@@ -1,0 +1,13 @@
+# Local environments & secrets (never upload local keys to Vercel build context)
+.env
+.env.*
+!.env.example
+
+# Build & local dependency caches
+node_modules
+dist
+
+# Dev tooling & verification artifacts
+.playwright-cli
+.aistudio
+*.log

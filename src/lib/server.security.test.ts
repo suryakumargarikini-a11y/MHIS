@@ -666,4 +666,81 @@ test('Firebase configuration targets provisioned project mhis-40ff1 and named da
   assert.equal(db.databaseId, 'ai-studio-85830e53-0349-481d-ae27-ffdfdecbe5c5');
 });
 
+test('Vercel serverless handler, CORS policy, persistent QR keyring, Service Account parser, and Gemini model env config', async () => {
+  const apiEntry = await import('../../api/index.ts');
+  assert.equal(typeof apiEntry.default, 'function');
+  assert.equal(typeof apiEntry.getServerlessApp, 'function');
+  assert.equal(apiEntry.config.maxDuration, 60);
+
+  const { getConfiguredGenerationModel } = await import('../../server.ts');
+  const { getConfiguredEmbeddingModel } = await import('./pretrainedEmbeddings.ts');
+  assert.equal(getConfiguredGenerationModel(), 'gemini-4-hydrogen');
+  assert.equal(getConfiguredEmbeddingModel(), 'gemini-embedding-2');
+
+  const { parseFirebaseServiceAccountFromEnv } = await import('./firebaseAdminAuth.ts');
+  assert.equal(parseFirebaseServiceAccountFromEnv(''), null);
+  const sampleSa = {
+    project_id: 'mhis-40ff1',
+    client_email: 'mhis-vercel@mhis-40ff1.iam.gserviceaccount.com',
+    private_key: '-----BEGIN PRIVATE KEY-----\\nFAKEKEYDATA\\n-----END PRIVATE KEY-----\\n',
+  };
+  const parsedRaw = parseFirebaseServiceAccountFromEnv(JSON.stringify(sampleSa));
+  assert.equal(parsedRaw?.projectId, 'mhis-40ff1');
+  assert.equal(parsedRaw?.clientEmail, sampleSa.client_email);
+  assert.ok(parsedRaw?.privateKey?.includes('\nFAKEKEYDATA\n'));
+
+  const parsedB64 = parseFirebaseServiceAccountFromEnv(
+    Buffer.from(JSON.stringify(sampleSa), 'utf8').toString('base64'),
+  );
+  assert.equal(parsedB64?.projectId, 'mhis-40ff1');
+
+  const prevQrKeys = process.env.MHIS_QR_SIGNING_KEYS_JSON;
+  delete process.env.MHIS_QR_SIGNING_KEYS_JSON;
+  try {
+    assert.throws(
+      () => QrEd25519Keyring.fromEnvironment({ requirePersistentKeys: true }),
+      /MHIS_QR_SIGNING_KEYS_JSON must be configured/,
+    );
+  } finally {
+    if (prevQrKeys !== undefined) {
+      process.env.MHIS_QR_SIGNING_KEYS_JSON = prevQrKeys;
+    }
+  }
+
+  // Live Express CORS + trust-proxy check
+  const prevVercelUrl = process.env.VERCEL_URL;
+  process.env.VERCEL_URL = 'mhis-preview.vercel.app';
+  const deps = setupAuthAndStores();
+  const srv = await startTestInstance({ ...deps, geminiClient: null });
+  try {
+    // Disallowed cross-origin request -> 403 and no wildcard header
+    const blocked = await fetch(`${srv.baseUrl}/api/health`, {
+      headers: { Origin: 'https://evil-phishing.example' },
+    });
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.headers.get('access-control-allow-origin'), null);
+
+    // Allowed preview Vercel origin -> 200 and exact origin echoed (never '*')
+    const allowed = await fetch(`${srv.baseUrl}/api/health`, {
+      headers: { Origin: 'https://mhis-preview.vercel.app' },
+    });
+    assert.equal(allowed.status, 200);
+    assert.equal(allowed.headers.get('access-control-allow-origin'), 'https://mhis-preview.vercel.app');
+
+    // Preflight OPTIONS for allowed origin -> 204
+    const preflight = await fetch(`${srv.baseUrl}/api/patients`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://mhis-preview.vercel.app' },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://mhis-preview.vercel.app');
+  } finally {
+    if (prevVercelUrl === undefined) {
+      delete process.env.VERCEL_URL;
+    } else {
+      process.env.VERCEL_URL = prevVercelUrl;
+    }
+    await srv.close();
+  }
+});
 

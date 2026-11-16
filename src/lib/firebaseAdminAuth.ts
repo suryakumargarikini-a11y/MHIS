@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { getApps, initializeApp, type App } from 'firebase-admin/app';
+import { cert, getApps, initializeApp, type App, type ServiceAccount } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp, type Firestore } from 'firebase-admin/firestore';
 import { isBootstrapAdminEmail } from './rbac.ts';
@@ -104,27 +104,125 @@ interface FirebaseAppletConfigFile {
   firestoreDatabaseId?: string;
 }
 
+const DEFAULT_PROJECT_ID = 'mhis-40ff1';
+const DEFAULT_FIRESTORE_DATABASE_ID = 'ai-studio-85830e53-0349-481d-ae27-ffdfdecbe5c5';
+
 let cachedAdminApp: App | null = null;
 let cachedConfig: FirebaseAppletConfigFile | null = null;
 
+export function parseFirebaseServiceAccountFromEnv(
+  rawValue = process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+): ServiceAccount | null {
+  const trimmed = rawValue?.trim();
+  if (!trimmed) return null;
+
+  let jsonText = trimmed;
+  if (!trimmed.startsWith('{')) {
+    try {
+      jsonText = Buffer.from(trimmed, 'base64').toString('utf8');
+    } catch {
+      throw new AuthVerificationError(
+        'AUTH_UNAVAILABLE',
+        'FIREBASE_SERVICE_ACCOUNT_JSON is neither valid JSON nor valid base64.',
+        503,
+      );
+    }
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(jsonText) as Record<string, unknown>;
+  } catch {
+    throw new AuthVerificationError(
+      'AUTH_UNAVAILABLE',
+      'FIREBASE_SERVICE_ACCOUNT_JSON could not be parsed as JSON.',
+      503,
+    );
+  }
+
+  const projectId =
+    typeof parsed.project_id === 'string'
+      ? parsed.project_id
+      : typeof parsed.projectId === 'string'
+        ? parsed.projectId
+        : undefined;
+  const clientEmail =
+    typeof parsed.client_email === 'string'
+      ? parsed.client_email
+      : typeof parsed.clientEmail === 'string'
+        ? parsed.clientEmail
+        : undefined;
+  const rawPrivateKey =
+    typeof parsed.private_key === 'string'
+      ? parsed.private_key
+      : typeof parsed.privateKey === 'string'
+        ? parsed.privateKey
+        : undefined;
+
+  if (!projectId || !clientEmail || !rawPrivateKey) {
+    throw new AuthVerificationError(
+      'AUTH_UNAVAILABLE',
+      'FIREBASE_SERVICE_ACCOUNT_JSON is missing required fields (project_id, client_email, private_key).',
+      503,
+    );
+  }
+
+  return {
+    projectId,
+    clientEmail,
+    privateKey: rawPrivateKey.replace(/\\n/g, '\n'),
+  };
+}
+
 export function loadFirebaseAppletConfig(): FirebaseAppletConfigFile {
   if (cachedConfig) return cachedConfig;
+
+  let fileConfig: Partial<FirebaseAppletConfigFile> = {};
   const cfgPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-  const raw = fs.readFileSync(cfgPath, 'utf8');
-  cachedConfig = JSON.parse(raw) as FirebaseAppletConfigFile;
+  if (fs.existsSync(cfgPath)) {
+    const raw = fs.readFileSync(cfgPath, 'utf8');
+    fileConfig = JSON.parse(raw) as Partial<FirebaseAppletConfigFile>;
+  }
+
+  const envProjectId =
+    process.env.GOOGLE_CLOUD_PROJECT?.trim() || process.env.FIREBASE_PROJECT_ID?.trim();
+  const envDatabaseId = process.env.FIRESTORE_DATABASE_ID?.trim();
+
+  const resolvedDbId =
+    envDatabaseId || fileConfig.firestoreDatabaseId || DEFAULT_FIRESTORE_DATABASE_ID;
+  if (resolvedDbId === '(default)') {
+    throw new Error(
+      'Refusing to target "(default)" Firestore database; configure ai-studio-85830e53-0349-481d-ae27-ffdfdecbe5c5.',
+    );
+  }
+
+  cachedConfig = {
+    projectId: envProjectId || fileConfig.projectId || DEFAULT_PROJECT_ID,
+    firestoreDatabaseId: resolvedDbId,
+  };
   return cachedConfig;
 }
 
 export function getFirebaseAdminApp(): { app: App; auth: Auth; db: Firestore } {
   const cfg = loadFirebaseAppletConfig();
   if (!cachedAdminApp) {
-    cachedAdminApp =
-      getApps().length > 0 ? getApps()[0]! : initializeApp({ projectId: cfg.projectId });
+    if (getApps().length > 0) {
+      cachedAdminApp = getApps()[0]!;
+    } else {
+      const serviceAccount = parseFirebaseServiceAccountFromEnv();
+      cachedAdminApp = serviceAccount
+        ? initializeApp({
+            credential: cert(serviceAccount),
+            projectId: cfg.projectId,
+          })
+        : initializeApp({ projectId: cfg.projectId });
+    }
   }
   const auth = getAuth(cachedAdminApp);
-  const db = cfg.firestoreDatabaseId
-    ? getFirestore(cachedAdminApp, cfg.firestoreDatabaseId)
-    : getFirestore(cachedAdminApp);
+  const db = getFirestore(
+    cachedAdminApp,
+    cfg.firestoreDatabaseId || DEFAULT_FIRESTORE_DATABASE_ID,
+  );
   return { app: cachedAdminApp, auth, db };
 }
 

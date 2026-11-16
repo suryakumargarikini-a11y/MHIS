@@ -154,10 +154,19 @@ export class QrEd25519Keyring {
     };
   }
 
-  static fromEnvironment(): QrEd25519Keyring {
+  static fromEnvironment(options?: { requirePersistentKeys?: boolean }): QrEd25519Keyring {
     const rawJson = process.env.MHIS_QR_SIGNING_KEYS_JSON?.trim();
     const activeKidEnv = process.env.MHIS_QR_ACTIVE_KID?.trim() || undefined;
+    const isVercelRuntime = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const requirePersistent =
+      options?.requirePersistentKeys ?? (isVercelRuntime && process.env.NODE_ENV !== 'test');
+
     if (!rawJson) {
+      if (requirePersistent) {
+        throw new Error(
+          'MHIS_QR_SIGNING_KEYS_JSON must be configured in serverless/Vercel environments so Ed25519 signatures verify across independent instances.',
+        );
+      }
       return new QrEd25519Keyring();
     }
 
