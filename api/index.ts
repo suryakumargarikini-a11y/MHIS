@@ -19,9 +19,16 @@ export function getServerlessApp(): Promise<Express> {
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
-  const app = await getServerlessApp();
-  return app(
-    req as unknown as Parameters<Express>[0],
-    res as unknown as Parameters<Express>[1],
-  );
+  try {
+    const app = await getServerlessApp();
+    return app(
+      req as unknown as Parameters<Express>[0],
+      res as unknown as Parameters<Express>[1],
+    );
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'Server initialization failed', detail: message, stack }));
+  }
 }
