@@ -196,7 +196,10 @@ export const PatientDashboard: React.FC = () => {
           query: q,
         }),
       });
-      const data = await res.json();
+      const contentType = res.headers.get('content-type') ?? '';
+      const data = contentType.includes('application/json')
+        ? await res.json()
+        : { error: `Server error (HTTP ${res.status}): ${await res.text().then((t) => t.slice(0, 200))}` };
       if (!res.ok) {
         if (res.status === 401) {
           throw new Error(
