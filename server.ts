@@ -223,8 +223,13 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
     customDeps?.dataStore ?? new FirestoreAuthoritativeDataStore(admin!.db);
   const securityStore: DistributedSecurityStore =
     customDeps?.securityStore ?? new FirestoreDistributedSecurityStore(admin!.db);
-  const qrKeyring: QrEd25519Keyring =
-    customDeps?.qrKeyring ?? QrEd25519Keyring.fromEnvironment();
+  let qrKeyring: QrEd25519Keyring;
+  try {
+    qrKeyring = customDeps?.qrKeyring ?? QrEd25519Keyring.fromEnvironment();
+  } catch (qrErr) {
+    console.warn('[MHIS Warning]: Persistent QR keyring init failed, using ephemeral:', qrErr);
+    qrKeyring = new QrEd25519Keyring();
+  }
   const geminiClient: GoogleGenAI | null =
     customDeps && 'geminiClient' in customDeps
       ? (customDeps.geminiClient ?? null)

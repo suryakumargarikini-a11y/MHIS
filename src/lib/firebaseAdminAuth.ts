@@ -209,7 +209,12 @@ export function getFirebaseAdminApp(): { app: App; auth: Auth; db: Firestore } {
     if (getApps().length > 0) {
       cachedAdminApp = getApps()[0]!;
     } else {
-      const serviceAccount = parseFirebaseServiceAccountFromEnv();
+      let serviceAccount: ServiceAccount | null = null;
+      try {
+        serviceAccount = parseFirebaseServiceAccountFromEnv();
+      } catch (saErr) {
+        console.warn('[MHIS Warning]: Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', saErr);
+      }
       cachedAdminApp = serviceAccount
         ? initializeApp({
             credential: cert(serviceAccount),

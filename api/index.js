@@ -847,7 +847,12 @@ function getFirebaseAdminApp() {
     if (getApps().length > 0) {
       cachedAdminApp = getApps()[0];
     } else {
-      const serviceAccount = parseFirebaseServiceAccountFromEnv();
+      let serviceAccount = null;
+      try {
+        serviceAccount = parseFirebaseServiceAccountFromEnv();
+      } catch (saErr) {
+        console.warn("[MHIS Warning]: Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", saErr);
+      }
       cachedAdminApp = serviceAccount ? initializeApp({
         credential: cert(serviceAccount),
         projectId: cfg.projectId
@@ -3533,7 +3538,13 @@ async function createApp(customDeps) {
   const authVerifier = customDeps?.authVerifier ?? new FirebaseAdminAuthVerifier(admin.auth);
   const dataStore = customDeps?.dataStore ?? new FirestoreAuthoritativeDataStore(admin.db);
   const securityStore = customDeps?.securityStore ?? new FirestoreDistributedSecurityStore(admin.db);
-  const qrKeyring = customDeps?.qrKeyring ?? QrEd25519Keyring.fromEnvironment();
+  let qrKeyring;
+  try {
+    qrKeyring = customDeps?.qrKeyring ?? QrEd25519Keyring.fromEnvironment();
+  } catch (qrErr) {
+    console.warn("[MHIS Warning]: Persistent QR keyring init failed, using ephemeral:", qrErr);
+    qrKeyring = new QrEd25519Keyring();
+  }
   const geminiClient = customDeps && "geminiClient" in customDeps ? customDeps.geminiClient ?? null : getDefaultGeminiClient();
   const rateLimitMax = customDeps?.rateLimitMax ?? RATE_LIMIT_MAX;
   const rateWindowMs = customDeps?.rateWindowMs ?? RATE_WINDOW_MS;
@@ -4659,20 +4670,24 @@ async function handler(req, res) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : void 0;
     console.error("[MHIS Serverless Request Handler Error]:", err);
     if (!res.headersSent) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          success: false,
-          ok: false,
-          error: `Server initialization error: ${message}`,
-          code: "SERVER_INIT_ERROR",
-          detail: message,
-          stack: process.env.NODE_ENV !== "production" ? stack : void 0
-        })
-      );
+      res.writeHead(500, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store"
+      });
+      await new Promise((resolve) => {
+        res.end(
+          JSON.stringify({
+            success: false,
+            ok: false,
+            error: `Server initialization error: ${message}`,
+            code: "SERVER_INIT_ERROR",
+            detail: message
+          }),
+          () => resolve()
+        );
+      });
     }
   }
 }

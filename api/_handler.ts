@@ -37,20 +37,24 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : undefined;
     console.error('[MHIS Serverless Request Handler Error]:', err);
     if (!res.headersSent) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          success: false,
-          ok: false,
-          error: `Server initialization error: ${message}`,
-          code: 'SERVER_INIT_ERROR',
-          detail: message,
-          stack: process.env.NODE_ENV !== 'production' ? stack : undefined,
-        }),
-      );
+      res.writeHead(500, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      });
+      await new Promise<void>((resolve) => {
+        res.end(
+          JSON.stringify({
+            success: false,
+            ok: false,
+            error: `Server initialization error: ${message}`,
+            code: 'SERVER_INIT_ERROR',
+            detail: message,
+          }),
+          () => resolve(),
+        );
+      });
     }
   }
 }
