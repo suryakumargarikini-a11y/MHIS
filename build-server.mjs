@@ -1,9 +1,9 @@
 import { build } from 'esbuild';
 
-console.log('Bundling api/_handler.ts -> api/index.js (ESM)...');
+console.log('Bundling src/serverlessHandler.ts -> api/index.js (ESM)...');
 
 await build({
-  entryPoints: ['api/_handler.ts'],
+  entryPoints: ['src/serverlessHandler.ts'],
   bundle: true,
   platform: 'node',
   target: 'node20',

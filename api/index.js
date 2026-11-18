@@ -4608,6 +4608,16 @@ SECURITY & GROUNDING RULES:
       }
     }
   );
+  app.use("/api", (req, res) => {
+    if (!res.headersSent) {
+      res.status(404).json({
+        success: false,
+        ok: false,
+        error: `Endpoint not found: ${req.method} ${req.originalUrl || req.url}`,
+        code: "NOT_FOUND"
+      });
+    }
+  });
   const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
   if (process.env.NODE_ENV === "production" && !isVercel) {
     const distPath = path2.join(__dirname, "dist");
@@ -4637,7 +4647,7 @@ if (isDirectExecution && !process.env.VERCEL && !process.env.VERCEL_ENV && proce
   });
 }
 
-// api/_handler.ts
+// src/serverlessHandler.ts
 var config = {
   maxDuration: 60
 };
@@ -4654,6 +4664,16 @@ function getServerlessApp() {
 }
 async function handler(req, res) {
   try {
+    const candidatePath = req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"] || req.headers["x-forwarded-uri"] || req.headers["x-original-url"];
+    if (candidatePath && candidatePath.startsWith("/api")) {
+      req.url = candidatePath;
+    } else if (req.url && req.url.startsWith("/api/index.js")) {
+      const rest = req.url.slice("/api/index.js".length);
+      req.url = rest ? rest.startsWith("/") ? rest : `/${rest}` : "/api";
+      if (!req.url.startsWith("/api")) {
+        req.url = `/api${req.url === "/" ? "" : req.url}`;
+      }
+    }
     const app = await getServerlessApp();
     await new Promise((resolve, reject) => {
       res.on("finish", () => resolve());
@@ -4663,8 +4683,28 @@ async function handler(req, res) {
         req,
         res,
         (err) => {
-          if (err) reject(err);
-          else resolve();
+          if (err) {
+            reject(err);
+          } else {
+            if (!res.headersSent) {
+              res.writeHead(404, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({
+                  success: false,
+                  ok: false,
+                  error: `Endpoint not found: ${req.method} ${req.url}`,
+                  code: "NOT_FOUND",
+                  diagnostic: {
+                    url: req.url,
+                    matchedPath: req.headers["x-matched-path"] || null
+                  }
+                }),
+                () => resolve()
+              );
+            } else {
+              resolve();
+            }
+          }
         }
       );
     });

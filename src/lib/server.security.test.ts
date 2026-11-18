@@ -667,7 +667,7 @@ test('Firebase configuration targets provisioned project mhis-40ff1 and named da
 });
 
 test('Vercel serverless handler, CORS policy, persistent QR keyring, Service Account parser, and Gemini model env config', async () => {
-  const apiEntry = await import('../../api/_handler.ts');
+  const apiEntry = await import('../serverlessHandler.ts');
   assert.equal(typeof apiEntry.default, 'function');
   assert.equal(typeof apiEntry.getServerlessApp, 'function');
   assert.equal(apiEntry.config.maxDuration, 60);

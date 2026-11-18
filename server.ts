@@ -1527,6 +1527,17 @@ SECURITY & GROUNDING RULES:
     },
   );
 
+  app.use('/api', (req, res) => {
+    if (!res.headersSent) {
+      res.status(404).json({
+        success: false,
+        ok: false,
+        error: `Endpoint not found: ${req.method} ${req.originalUrl || req.url}`,
+        code: 'NOT_FOUND',
+      });
+    }
+  });
+
   const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
   if (process.env.NODE_ENV === 'production' && !isVercel) {
     const distPath = path.join(__dirname, 'dist');
