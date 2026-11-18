@@ -9,4 +9,3 @@ coverage/
 .aistudio/
 
 vercel.env
-api/server.cjs

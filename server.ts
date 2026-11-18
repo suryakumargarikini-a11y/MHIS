@@ -753,20 +753,21 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
 
     const healthId = bodyHealthId ?? bodyPatient?.healthId;
     if (typeof healthId !== 'string' || !SAFE_ID_REGEX.test(healthId)) {
-      res.status(400).json({ ok: false, error: 'Valid healthId is required.' });
+      res.status(400).json({ ok: false, success: false, code: 'INVALID_REQUEST', error: 'Valid healthId is required.' });
       return;
     }
 
     try {
       const record = await dataStore.getPatientWithOwner(healthId);
       if (!record) {
-        res.status(404).json({ ok: false, code: 'PATIENT_NOT_FOUND', error: `Patient ${healthId} not found.` });
+        res.status(404).json({ ok: false, success: false, code: 'PATIENT_NOT_FOUND', error: `Patient ${healthId} not found.` });
         return;
       }
 
       if (principal.role === 'patient' && record.ownerUid !== principal.uid) {
         res.status(403).json({
           ok: false,
+          success: false,
           code: 'FORBIDDEN_PATIENT_ACCESS',
           error: 'Patients may only run continuity assessments on their own record.',
         });
@@ -784,6 +785,8 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
       if (consentView.consentRestricted && consentView.patient.encounters.length === 0) {
         res.status(403).json({
           ok: false,
+          success: false,
+          code: 'CONSENT_RESTRICTED',
           error:
             'Inter-state clinical record sharing is revoked by the patient. External encounters cannot be transmitted for AI handoff synthesis.',
           consentRestricted: true,
@@ -797,6 +800,8 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
       if (!geminiClient) {
         res.status(503).json({
           ok: false,
+          success: false,
+          code: 'AI_SERVICE_UNCONFIGURED',
           error:
             'Gemini AI service is not configured in environment secrets (GEMINI_API_KEY missing). Deterministic risk scoring remains active.',
         });
@@ -880,7 +885,8 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
       }
       const message = err instanceof Error ? err.message : 'Gemini risk synthesis failed.';
       const status = /timed out/i.test(message) ? 504 : 502;
-      res.status(status).json({ ok: false, error: message });
+      const code = /timed out/i.test(message) ? 'AI_TIMEOUT' : 'AI_SERVICE_ERROR';
+      res.status(status).json({ ok: false, success: false, code, error: message });
     }
   });
 
@@ -895,12 +901,12 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
 
     const healthId = bodyHealthId ?? bodyPatient?.healthId;
     if (typeof healthId !== 'string' || !SAFE_ID_REGEX.test(healthId)) {
-      res.status(400).json({ ok: false, error: 'Valid healthId is required.' });
+      res.status(400).json({ ok: false, success: false, code: 'INVALID_REQUEST', error: 'Valid healthId is required.' });
       return;
     }
 
     if (typeof query !== 'string' || !query.trim()) {
-      res.status(400).json({ ok: false, error: 'A non-empty clinical query is required.' });
+      res.status(400).json({ ok: false, success: false, code: 'INVALID_QUERY', error: 'A non-empty clinical query is required.' });
       return;
     }
 
@@ -908,6 +914,8 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
     if (trimmedQuery.length > MAX_QUERY_LENGTH) {
       res.status(400).json({
         ok: false,
+        success: false,
+        code: 'QUERY_TOO_LONG',
         error: `Query exceeds maximum length of ${MAX_QUERY_LENGTH} characters.`,
       });
       return;
@@ -916,6 +924,8 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
     if (detectPromptInjection(trimmedQuery)) {
       res.status(400).json({
         ok: false,
+        success: false,
+        code: 'PROMPT_INJECTION_DETECTED',
         error:
           'Query rejected by prompt-safety guard: instruction-override or cross-patient exfiltration directives are not permitted.',
       });
@@ -925,13 +935,14 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
     try {
       const record = await dataStore.getPatientWithOwner(healthId);
       if (!record) {
-        res.status(404).json({ ok: false, code: 'PATIENT_NOT_FOUND', error: `Patient ${healthId} not found.` });
+        res.status(404).json({ ok: false, success: false, code: 'PATIENT_NOT_FOUND', error: `Patient ${healthId} not found.` });
         return;
       }
 
       if (principal.role === 'patient' && record.ownerUid !== principal.uid) {
         res.status(403).json({
           ok: false,
+          success: false,
           code: 'FORBIDDEN_PATIENT_ACCESS',
           error: 'Patients may only query their own health records.',
         });
@@ -949,6 +960,8 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
       if (consentView.consentRestricted && consentView.patient.encounters.length === 0) {
         res.status(403).json({
           ok: false,
+          success: false,
+          code: 'CONSENT_RESTRICTED',
           error:
             'Access withheld: patient has revoked Inter-State Primary Clinic Record Sharing for external state encounters.',
           consentRestricted: true,
@@ -959,6 +972,8 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
       if (!geminiClient) {
         res.status(503).json({
           ok: false,
+          success: false,
+          code: 'AI_SERVICE_UNCONFIGURED',
           error: 'Gemini AI assistant requires GEMINI_API_KEY in server environment secrets.',
         });
         return;
@@ -1028,7 +1043,8 @@ SECURITY & GROUNDING RULES:
       }
       const message = err instanceof Error ? err.message : 'Gemini assistant query failed.';
       const status = /timed out/i.test(message) ? 504 : 502;
-      res.status(status).json({ ok: false, error: message });
+      const code = /timed out/i.test(message) ? 'AI_TIMEOUT' : 'AI_SERVICE_ERROR';
+      res.status(status).json({ ok: false, success: false, code, error: message });
     }
   });
 
