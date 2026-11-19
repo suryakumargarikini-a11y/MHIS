@@ -1,15 +1,23 @@
 import type { AppRoute, UserRole } from '../types/health.ts';
 
 export const ADMIN_BOOTSTRAP_EMAIL = 'suryakumar.garikini@gmail.com';
+export const ADMIN_BOOTSTRAP_EMAILS = [
+  'suryakumar.garikini@gmail.com',
+  'suryakumargarikini@gmail.com',
+];
 
 export function isBootstrapAdminEmail(
   email: string | null | undefined,
   emailVerified: boolean | null | undefined,
 ): boolean {
-  return Boolean(
-    emailVerified === true &&
-      email &&
-      email.trim().toLowerCase() === ADMIN_BOOTSTRAP_EMAIL,
+  if (emailVerified !== true || !email) return false;
+  const normalized = email.trim().toLowerCase();
+  const canonical = normalized.endsWith('@gmail.com')
+    ? normalized.slice(0, -'@gmail.com'.length).replace(/\./g, '') + '@gmail.com'
+    : normalized;
+  return (
+    canonical === 'suryakumargarikini@gmail.com' ||
+    ADMIN_BOOTSTRAP_EMAILS.includes(normalized)
   );
 }
 
