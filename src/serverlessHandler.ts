@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Express } from 'express';
 import { createApp } from '../server.ts';
 
@@ -18,6 +19,20 @@ export function getServerlessApp(): Promise<Express> {
   return cachedAppPromise;
 }
 
-const app: Express = await getServerlessApp();
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const candidatePath =
+    (req.headers['x-matched-path'] as string | undefined) ||
+    (req.headers['x-vercel-matched-path'] as string | undefined) ||
+    (req.headers['x-forwarded-uri'] as string | undefined) ||
+    (req.headers['x-original-url'] as string | undefined);
 
-export default app;
+  if (candidatePath && candidatePath.startsWith('/api')) {
+    req.url = candidatePath;
+  }
+
+  const app = await getServerlessApp();
+  app(
+    req as unknown as Parameters<Express>[0],
+    res as unknown as Parameters<Express>[1],
+  );
+}

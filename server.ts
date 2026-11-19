@@ -45,8 +45,15 @@ import {
 } from './src/lib/surveillancePrivacy.ts';
 import { runPretrainedEmbeddingComparison } from './src/lib/pretrainedEmbeddings.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentFileUrl = typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : null;
+const resolvedFilename =
+  typeof __filename !== 'undefined'
+    ? __filename
+    : currentFileUrl
+      ? fileURLToPath(currentFileUrl)
+      : '';
+const resolvedDirname =
+  typeof __dirname !== 'undefined' ? __dirname : path.dirname(resolvedFilename);
 
 const PORT = Number(process.env.PORT || 3000);
 const MAX_QUERY_LENGTH = 600;
@@ -1555,7 +1562,7 @@ SECURITY & GROUNDING RULES:
 
   const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
   if (process.env.NODE_ENV === 'production' && !isVercel) {
-    const distPath = path.join(__dirname, 'dist');
+    const distPath = path.join(resolvedDirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
@@ -1574,7 +1581,11 @@ SECURITY & GROUNDING RULES:
 
 const isDirectExecution =
   Boolean(process.argv[1]) &&
-  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+  (currentFileUrl
+    ? pathToFileURL(path.resolve(process.argv[1])).href === currentFileUrl
+    : resolvedFilename
+      ? path.resolve(process.argv[1]) === path.resolve(resolvedFilename)
+      : false);
 
 if (
   isDirectExecution &&

@@ -1,13 +1,13 @@
 import { build } from 'esbuild';
 
-console.log('Bundling src/serverlessHandler.ts -> api/index.js (ESM)...');
+console.log('Bundling src/serverlessHandler.ts -> api/index.js (CJS)...');
 
 await build({
   entryPoints: ['src/serverlessHandler.ts'],
   bundle: true,
   platform: 'node',
   target: 'node20',
-  format: 'esm',
+  format: 'cjs',
   outfile: 'api/index.js',
   external: [
     'firebase-admin',
@@ -19,10 +19,10 @@ await build({
     'vite',
     'node:*',
   ],
-  banner: {
-    js: `import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);`,
+  footer: {
+    js: `module.exports = handler; module.exports.default = handler; module.exports.getServerlessApp = getServerlessApp; module.exports.config = config;`,
   },
   logLevel: 'info',
 });
 
-console.log('✓ Successfully bundled api/index.js');
+console.log('✓ Successfully bundled api/index.js as CommonJS');
