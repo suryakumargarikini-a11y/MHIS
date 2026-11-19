@@ -463,11 +463,23 @@ export const HealthSystemProvider: React.FC<{ children: React.ReactNode }> = ({ 
       // onAuthStateChanged handles least-privilege user profile creation and backend session sync
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      setAuthError(
-        err instanceof Error
-          ? `Google sign-in could not complete: ${err.message}`
-          : 'Google sign-in failed.',
-      );
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: unknown }).code)
+          : '';
+      const msg = err instanceof Error ? err.message : 'Google sign-in failed.';
+
+      if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
+        setAuthError(
+          `Firebase Auth Error: Domain "${window.location.hostname}" is not authorized. Please add "${window.location.hostname}" to Firebase Console > Authentication > Settings > Authorized domains.`,
+        );
+      } else if (code === 'auth/popup-closed-by-user') {
+        setAuthError(
+          `Sign-in popup closed automatically. In Firebase Console (project mhis-40ff1), add "${window.location.hostname}" under Authentication > Settings > Authorized domains.`,
+        );
+      } else {
+        setAuthError(`Google sign-in could not complete: ${msg}`);
+      }
     }
   };
 

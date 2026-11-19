@@ -11,6 +11,8 @@ export const Footer: React.FC = () => {
     signInWithGoogle,
     signOutUser,
     resetDemoDataset,
+    authError,
+    clearAuthError,
   } = useHealthSystem();
 
   return (
@@ -94,6 +96,18 @@ export const Footer: React.FC = () => {
             Reset Demo Dataset
           </button>
         </div>
+        {authError && (
+          <div className="w-full mt-3 p-3 rounded-lg bg-[#FF6B5B]/15 border border-[#FF6B5B]/30 text-[#FF6B5B] flex items-center justify-between text-xs">
+            <span>{authError}</span>
+            <button
+              type="button"
+              onClick={clearAuthError}
+              className="ml-3 underline font-medium hover:text-[#F4EDE0] cursor-pointer whitespace-nowrap"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
       </div>
     </footer>
   );
