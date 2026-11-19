@@ -242,6 +242,21 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
+
+  // Restore original request URL from Vercel rewrite tracking headers
+  app.use((req, _res, next) => {
+    const candidatePath =
+      (req.headers['x-matched-path'] as string | undefined) ||
+      (req.headers['x-vercel-matched-path'] as string | undefined) ||
+      (req.headers['x-forwarded-uri'] as string | undefined) ||
+      (req.headers['x-original-url'] as string | undefined);
+
+    if (candidatePath && candidatePath.startsWith('/api')) {
+      req.url = candidatePath;
+    }
+    next();
+  });
+
   app.use(express.json({ limit: '512kb' }));
 
   // Defensive HTTP security headers + strict CORS allowlist (never wildcard '*')

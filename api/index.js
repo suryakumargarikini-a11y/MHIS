@@ -3549,11 +3549,18 @@ async function createApp(customDeps) {
   const rateLimitMax = customDeps?.rateLimitMax ?? RATE_LIMIT_MAX;
   const rateWindowMs = customDeps?.rateWindowMs ?? RATE_WINDOW_MS;
   const allowTestClockOverride = customDeps?.allowTestClockOverride ?? process.env.NODE_ENV === "test";
-  const app = express();
-  app.disable("x-powered-by");
-  app.set("trust proxy", 1);
-  app.use(express.json({ limit: "512kb" }));
-  app.use((req, res, next) => {
+  const app2 = express();
+  app2.disable("x-powered-by");
+  app2.set("trust proxy", 1);
+  app2.use((req, _res, next) => {
+    const candidatePath = req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"] || req.headers["x-forwarded-uri"] || req.headers["x-original-url"];
+    if (candidatePath && candidatePath.startsWith("/api")) {
+      req.url = candidatePath;
+    }
+    next();
+  });
+  app2.use(express.json({ limit: "512kb" }));
+  app2.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     const origin = req.header("origin");
@@ -3656,7 +3663,7 @@ async function createApp(customDeps) {
     };
     await dataStore.appendAuditLog(entry, params.ownerUid);
   }
-  app.get("/api/health", (_req, res) => {
+  app2.get("/api/health", (_req, res) => {
     const activeKey = qrKeyring.getActiveKey();
     res.json({
       ok: true,
@@ -3668,7 +3675,7 @@ async function createApp(customDeps) {
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
   });
-  app.get("/api/auth/session", requireFirebaseAuth, (req, res) => {
+  app2.get("/api/auth/session", requireFirebaseAuth, (req, res) => {
     const p = req.principal;
     res.json({
       ok: true,
@@ -3679,10 +3686,10 @@ async function createApp(customDeps) {
       role: p.role
     });
   });
-  app.get("/api/qr/keys", requireFirebaseAuth, (_req, res) => {
+  app2.get("/api/qr/keys", requireFirebaseAuth, (_req, res) => {
     res.json({ ok: true, keys: qrKeyring.listPublicMetadata() });
   });
-  app.post("/api/qr/issue", requireFirebaseAuth, async (req, res) => {
+  app2.post("/api/qr/issue", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const { healthId, ttlDays } = req.body;
     if (typeof healthId !== "string" || !SAFE_ID_REGEX2.test(healthId)) {
@@ -3727,7 +3734,7 @@ async function createApp(customDeps) {
       handleBackendError(res, err, "Failed to issue signed QR Health Pass.");
     }
   });
-  app.post(
+  app2.post(
     "/api/qr/verify",
     requireFirebaseAuth,
     requireRoles("doctor", "admin"),
@@ -3831,7 +3838,7 @@ async function createApp(customDeps) {
       }
     }
   );
-  app.post("/api/qr/revoke", requireFirebaseAuth, async (req, res) => {
+  app2.post("/api/qr/revoke", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const { passId, healthId } = req.body;
     if (typeof passId !== "string" || !SAFE_ID_REGEX2.test(passId)) {
@@ -3901,7 +3908,7 @@ async function createApp(customDeps) {
       handleBackendError(res, err, "Failed to revoke QR Health Pass.");
     }
   });
-  app.post("/api/qr/reissue", requireFirebaseAuth, async (req, res) => {
+  app2.post("/api/qr/reissue", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const { healthId, previousPassId, ttlDays } = req.body;
     if (typeof healthId !== "string" || !SAFE_ID_REGEX2.test(healthId)) {
@@ -3956,7 +3963,7 @@ async function createApp(customDeps) {
       handleBackendError(res, err, "Failed to complete controlled QR pass reissuance.");
     }
   });
-  app.post("/api/ai/risk-assess", requireFirebaseAuth, async (req, res) => {
+  app2.post("/api/ai/risk-assess", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const { healthId: bodyHealthId, patient: bodyPatient, simulationOverride } = req.body;
     const healthId = bodyHealthId ?? bodyPatient?.healthId;
@@ -4083,7 +4090,7 @@ ${context}`,
       res.status(status).json({ ok: false, success: false, code, error: message });
     }
   });
-  app.post("/api/ai/assistant", requireFirebaseAuth, async (req, res) => {
+  app2.post("/api/ai/assistant", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const { healthId: bodyHealthId, patient: bodyPatient, query } = req.body;
     const healthId = bodyHealthId ?? bodyPatient?.healthId;
@@ -4216,7 +4223,7 @@ SECURITY & GROUNDING RULES:
       res.status(status).json({ ok: false, success: false, code, error: message });
     }
   });
-  app.get(
+  app2.get(
     "/api/surveillance/summary",
     requireFirebaseAuth,
     requireRoles("admin", "doctor"),
@@ -4242,7 +4249,7 @@ SECURITY & GROUNDING RULES:
       }
     }
   );
-  app.post(
+  app2.post(
     "/api/ai/embedding-eval",
     requireFirebaseAuth,
     requireRoles("admin", "doctor"),
@@ -4255,7 +4262,7 @@ SECURITY & GROUNDING RULES:
       }
     }
   );
-  app.get("/api/patients", requireFirebaseAuth, async (req, res) => {
+  app2.get("/api/patients", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     try {
       const records = await dataStore.listPatientsForActor(principal);
@@ -4272,7 +4279,7 @@ SECURITY & GROUNDING RULES:
       handleBackendError(res, err, "Failed to load patient records.");
     }
   });
-  app.get("/api/patients/:healthId", requireFirebaseAuth, async (req, res) => {
+  app2.get("/api/patients/:healthId", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const healthId = String(req.params.healthId ?? "");
     if (!SAFE_ID_REGEX2.test(healthId)) {
@@ -4305,7 +4312,7 @@ SECURITY & GROUNDING RULES:
       handleBackendError(res, err, "Failed to fetch patient record.");
     }
   });
-  app.post("/api/patients", requireFirebaseAuth, async (req, res) => {
+  app2.post("/api/patients", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const { patient, ownerUid: requestedOwnerUid } = req.body;
     if (!isValidNewPatientInput(patient)) {
@@ -4343,7 +4350,7 @@ SECURITY & GROUNDING RULES:
       handleBackendError(res, err, "Failed to register patient.");
     }
   });
-  app.post(
+  app2.post(
     "/api/patients/:healthId/encounters",
     requireFirebaseAuth,
     requireRoles("doctor", "admin"),
@@ -4399,7 +4406,7 @@ SECURITY & GROUNDING RULES:
       }
     }
   );
-  app.post("/api/patients/:healthId/migration", requireFirebaseAuth, async (req, res) => {
+  app2.post("/api/patients/:healthId/migration", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const healthId = String(req.params.healthId ?? "");
     const { state, district, sector } = req.body;
@@ -4443,7 +4450,7 @@ SECURITY & GROUNDING RULES:
       handleBackendError(res, err, "Failed to update migration location.");
     }
   });
-  app.get("/api/consents/:healthId", requireFirebaseAuth, async (req, res) => {
+  app2.get("/api/consents/:healthId", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const healthId = String(req.params.healthId ?? "");
     if (!SAFE_ID_REGEX2.test(healthId)) {
@@ -4474,7 +4481,7 @@ SECURITY & GROUNDING RULES:
       handleBackendError(res, err, "Failed to fetch consent preferences.");
     }
   });
-  app.put("/api/consents/:healthId", requireFirebaseAuth, async (req, res) => {
+  app2.put("/api/consents/:healthId", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     const healthId = String(req.params.healthId ?? "");
     const patch = req.body;
@@ -4529,7 +4536,7 @@ SECURITY & GROUNDING RULES:
       handleBackendError(res, err, "Failed to update consent.");
     }
   });
-  app.get("/api/audit", requireFirebaseAuth, async (req, res) => {
+  app2.get("/api/audit", requireFirebaseAuth, async (req, res) => {
     const principal = req.principal;
     try {
       const logs = await dataStore.listAuditLogsForActor(principal);
@@ -4538,7 +4545,7 @@ SECURITY & GROUNDING RULES:
       handleBackendError(res, err, "Failed to load audit logs.");
     }
   });
-  app.get(
+  app2.get(
     "/api/admin/linkage",
     requireFirebaseAuth,
     requireRoles("admin"),
@@ -4551,7 +4558,7 @@ SECURITY & GROUNDING RULES:
       }
     }
   );
-  app.post(
+  app2.post(
     "/api/admin/linkage/:candidateId",
     requireFirebaseAuth,
     requireRoles("admin"),
@@ -4585,7 +4592,7 @@ SECURITY & GROUNDING RULES:
       }
     }
   );
-  app.post(
+  app2.post(
     "/api/admin/seed-demo",
     requireFirebaseAuth,
     requireRoles("admin"),
@@ -4608,7 +4615,7 @@ SECURITY & GROUNDING RULES:
       }
     }
   );
-  app.use("/api", (req, res) => {
+  app2.use("/api", (req, res) => {
     if (!res.headersSent) {
       res.status(404).json({
         success: false,
@@ -4621,8 +4628,8 @@ SECURITY & GROUNDING RULES:
   const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
   if (process.env.NODE_ENV === "production" && !isVercel) {
     const distPath = path2.join(__dirname, "dist");
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
+    app2.use(express.static(distPath));
+    app2.get("*", (_req, res) => {
       res.sendFile(path2.join(distPath, "index.html"));
     });
   } else if (process.env.NODE_ENV !== "test" && !isVercel) {
@@ -4631,14 +4638,14 @@ SECURITY & GROUNDING RULES:
       server: { middlewareMode: true },
       appType: "spa"
     });
-    app.use(vite.middlewares);
+    app2.use(vite.middlewares);
   }
-  return app;
+  return app2;
 }
 var isDirectExecution = Boolean(process.argv[1]) && pathToFileURL(path2.resolve(process.argv[1])).href === import.meta.url;
 if (isDirectExecution && !process.env.VERCEL && !process.env.VERCEL_ENV && process.env.NODE_ENV !== "test") {
-  createApp().then((app) => {
-    app.listen(PORT, "0.0.0.0", () => {
+  createApp().then((app2) => {
+    app2.listen(PORT, "0.0.0.0", () => {
       console.log(`MHIS server listening on http://0.0.0.0:${PORT}`);
     });
   }).catch((err) => {
@@ -4662,77 +4669,10 @@ function getServerlessApp() {
   }
   return cachedAppPromise;
 }
-async function handler(req, res) {
-  try {
-    const candidatePath = req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"] || req.headers["x-forwarded-uri"] || req.headers["x-original-url"];
-    if (candidatePath && candidatePath.startsWith("/api")) {
-      req.url = candidatePath;
-    } else if (req.url && req.url.startsWith("/api/index.js")) {
-      const rest = req.url.slice("/api/index.js".length);
-      req.url = rest ? rest.startsWith("/") ? rest : `/${rest}` : "/api";
-      if (!req.url.startsWith("/api")) {
-        req.url = `/api${req.url === "/" ? "" : req.url}`;
-      }
-    }
-    const app = await getServerlessApp();
-    await new Promise((resolve, reject) => {
-      res.on("finish", () => resolve());
-      res.on("close", () => resolve());
-      res.on("error", (err) => reject(err));
-      app(
-        req,
-        res,
-        (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            if (!res.headersSent) {
-              res.writeHead(404, { "Content-Type": "application/json" });
-              res.end(
-                JSON.stringify({
-                  success: false,
-                  ok: false,
-                  error: `Endpoint not found: ${req.method} ${req.url}`,
-                  code: "NOT_FOUND",
-                  diagnostic: {
-                    url: req.url,
-                    matchedPath: req.headers["x-matched-path"] || null
-                  }
-                }),
-                () => resolve()
-              );
-            } else {
-              resolve();
-            }
-          }
-        }
-      );
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[MHIS Serverless Request Handler Error]:", err);
-    if (!res.headersSent) {
-      res.writeHead(500, {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store"
-      });
-      await new Promise((resolve) => {
-        res.end(
-          JSON.stringify({
-            success: false,
-            ok: false,
-            error: `Server initialization error: ${message}`,
-            code: "SERVER_INIT_ERROR",
-            detail: message
-          }),
-          () => resolve()
-        );
-      });
-    }
-  }
-}
+var app = await getServerlessApp();
+var serverlessHandler_default = app;
 export {
   config,
-  handler as default,
+  serverlessHandler_default as default,
   getServerlessApp
 };
