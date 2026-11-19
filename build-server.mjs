@@ -6,7 +6,7 @@ await build({
   entryPoints: ['src/serverlessHandler.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'cjs',
   outfile: 'api/index.js',
   external: [
