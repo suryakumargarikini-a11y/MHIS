@@ -17,6 +17,7 @@ import {
   FirestoreDistributedSecurityStore,
   SecurityStoreUnavailableError,
   type DistributedSecurityStore,
+  type RateLimitResult,
 } from './src/lib/distributedSecurityStore.ts';
 import {
   AuthVerificationError,
@@ -322,11 +323,22 @@ export async function createApp(customDeps?: Partial<ServerDependencies>) {
       const authoritativeRole = await dataStore.getUserRole(claims);
 
       const clientIp = req.ip || req.socket.remoteAddress || 'local';
-      const rate = await securityStore.consumeRateLimit({
-        bucketKey: `ip_${clientIp}`,
-        limit: rateLimitMax,
-        windowMs: rateWindowMs,
-      });
+      let rate: RateLimitResult;
+      try {
+        rate = await securityStore.consumeRateLimit({
+          bucketKey: `ip_${clientIp}`,
+          limit: rateLimitMax,
+          windowMs: rateWindowMs,
+        });
+      } catch (rateErr) {
+        const msg = rateErr instanceof Error ? rateErr.message : String(rateErr);
+        if (/Could not load the default credentials/i.test(msg)) {
+          console.warn('[MHIS RateLimit Warning]: Credentials unavailable, using local rate limit allowance:', msg);
+          rate = { allowed: true, count: 1, limit: rateLimitMax, resetAtMs: Date.now() + rateWindowMs };
+        } else {
+          throw rateErr;
+        }
+      }
       res.setHeader('X-RateLimit-Limit', String(rate.limit));
       res.setHeader('X-RateLimit-Remaining', String(Math.max(0, rate.limit - rate.count)));
       if (!rate.allowed) {

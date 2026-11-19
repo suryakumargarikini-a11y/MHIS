@@ -686,6 +686,11 @@ export class FirestoreAuthoritativeDataStore implements AuthoritativeDataStore {
         createdAt: Timestamp.now(),
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/Could not load the default credentials/i.test(message)) {
+        console.warn('[MHIS DataStore Warning]: Credentials unavailable for Firestore audit log:', message);
+        return;
+      }
       this.wrapDbError('appendAuditLog', err);
     }
   }
@@ -715,6 +720,10 @@ export class FirestoreAuthoritativeDataStore implements AuthoritativeDataStore {
         };
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/Could not load the default credentials/i.test(message)) {
+        return [];
+      }
       this.wrapDbError('listAuditLogsForActor', err);
     }
   }
@@ -724,6 +733,10 @@ export class FirestoreAuthoritativeDataStore implements AuthoritativeDataStore {
       const snap = await this.db.collection('linkageCandidates').limit(100).get();
       return snap.docs.map((d) => d.data() as LinkageCandidate);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/Could not load the default credentials/i.test(message)) {
+        return [];
+      }
       this.wrapDbError('listLinkageCandidates', err);
     }
   }

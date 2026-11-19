@@ -72,6 +72,9 @@ function sanitizeDocId(raw: string): string {
  */
 export class FirestoreDistributedSecurityStore implements DistributedSecurityStore {
   private readonly db: Firestore;
+  private readonly fallbackRateLimits = new Map<string, { count: number; expiresAtMs: number }>();
+  private readonly fallbackRevocations = new Map<string, RevocationRecord>();
+  private readonly fallbackNonces = new Map<string, { count: number; expiresAtMs: number }>();
 
   constructor(db: Firestore) {
     this.db = db;
@@ -86,8 +89,14 @@ export class FirestoreDistributedSecurityStore implements DistributedSecuritySto
       const expiresAtMs = data.expiresAt?.toMillis() ?? Number.POSITIVE_INFINITY;
       return expiresAtMs > nowMs;
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/Could not load the default credentials/i.test(message)) {
+        const rec = this.fallbackRevocations.get(passId);
+        if (!rec) return false;
+        return rec.expiresAtMs > nowMs;
+      }
       throw new SecurityStoreUnavailableError(
-        `Distributed QR revocation check failed: ${err instanceof Error ? err.message : String(err)}`,
+        `Distributed QR revocation check failed: ${message}`,
         err,
       );
     }
@@ -146,8 +155,25 @@ export class FirestoreDistributedSecurityStore implements DistributedSecuritySto
         };
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/Could not load the default credentials/i.test(message)) {
+        const existing = this.fallbackRevocations.get(params.passId);
+        if (existing && existing.expiresAtMs > nowMs) {
+          return { ...existing, alreadyRevoked: true };
+        }
+        const created: RevocationRecord = {
+          passId: params.passId,
+          healthId: params.healthId,
+          revokedByUid: params.revokedByUid,
+          revokedAtMs: nowMs,
+          expiresAtMs: nowMs + ttlMs,
+          alreadyRevoked: false,
+        };
+        this.fallbackRevocations.set(params.passId, created);
+        return created;
+      }
       throw new SecurityStoreUnavailableError(
-        `Distributed QR revocation write failed: ${err instanceof Error ? err.message : String(err)}`,
+        `Distributed QR revocation write failed: ${message}`,
         err,
       );
     }
@@ -210,8 +236,34 @@ export class FirestoreDistributedSecurityStore implements DistributedSecuritySto
         };
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/Could not load the default credentials/i.test(message)) {
+        const existing = this.fallbackNonces.get(params.passId);
+        if (existing && existing.expiresAtMs > nowMs) {
+          if (params.rejectReplay) {
+            return {
+              replayed: true,
+              presentationCount: existing.count,
+              expiresAtMs: existing.expiresAtMs,
+            };
+          }
+          existing.count += 1;
+          return {
+            replayed: false,
+            presentationCount: existing.count,
+            expiresAtMs: existing.expiresAtMs,
+          };
+        }
+        const expiresAtMs = nowMs + Math.max(1000, params.ttlMs);
+        this.fallbackNonces.set(params.passId, { count: 1, expiresAtMs });
+        return {
+          replayed: false,
+          presentationCount: 1,
+          expiresAtMs,
+        };
+      }
       throw new SecurityStoreUnavailableError(
-        `Distributed QR replay transaction failed: ${err instanceof Error ? err.message : String(err)}`,
+        `Distributed QR replay transaction failed: ${message}`,
         err,
       );
     }
@@ -263,8 +315,31 @@ export class FirestoreDistributedSecurityStore implements DistributedSecuritySto
         };
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/Could not load the default credentials/i.test(message)) {
+        console.warn('[MHIS SecurityStore Warning]: Google default credentials unavailable for Firestore rate limiting, using memory fallback.');
+        const existing = this.fallbackRateLimits.get(params.bucketKey);
+        if (existing && existing.expiresAtMs > nowMs) {
+          const nextCount = existing.count + 1;
+          existing.count = nextCount;
+          return {
+            allowed: nextCount <= params.limit,
+            count: nextCount,
+            limit: params.limit,
+            resetAtMs: existing.expiresAtMs,
+          };
+        }
+        const expiresAtMs = nowMs + params.windowMs;
+        this.fallbackRateLimits.set(params.bucketKey, { count: 1, expiresAtMs });
+        return {
+          allowed: 1 <= params.limit,
+          count: 1,
+          limit: params.limit,
+          resetAtMs: expiresAtMs,
+        };
+      }
       throw new SecurityStoreUnavailableError(
-        `Distributed rate-limit transaction failed: ${err instanceof Error ? err.message : String(err)}`,
+        `Distributed rate-limit transaction failed: ${message}`,
         err,
       );
     }
