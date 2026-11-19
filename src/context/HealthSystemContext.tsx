@@ -1,5 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
+import {
+  browserPopupRedirectResolver,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+  type User,
+} from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import {
   INITIAL_AUDIT_LOGS,
@@ -461,7 +467,7 @@ export const HealthSystemProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setAuthError('');
     try {
       // onAuthStateChanged handles least-privilege user profile creation and backend session sync
-      await signInWithPopup(auth, googleProvider);
+      await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
     } catch (err) {
       const code =
         typeof err === 'object' && err !== null && 'code' in err
